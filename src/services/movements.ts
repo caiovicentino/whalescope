@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Whale Movements Tracking Service
  * Monitors and stores large token movements

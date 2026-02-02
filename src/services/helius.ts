@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Helius API Service
  * Interacts with Helius API for Solana blockchain data

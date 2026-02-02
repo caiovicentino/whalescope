@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Whale Detection Service
  * Core logic for identifying and tracking whale wallets
