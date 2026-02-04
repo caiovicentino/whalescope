@@ -86,7 +86,7 @@ async function heliusRpc<T>(method: string, params: any[]): Promise<T> {
 
 /**
  * Get largest token holders for a specific mint
- * Uses DAS API to fetch token accounts sorted by balance
+ * Uses Helius DAS API for efficient token holder queries
  * 
  * @param mint - Token mint address
  * @param limit - Max number of holders to return (default 20)
@@ -96,24 +96,81 @@ export async function getLargestTokenHolders(
   mint: string,
   limit: number = 20
 ): Promise<TokenHolder[]> {
-  // Use getTokenLargestAccounts RPC method
-  const result = await heliusRpc<{
-    context: { slot: number };
-    value: Array<{
-      address: string;
-      amount: string;
-      decimals: number;
-      uiAmount: number;
-      uiAmountString: string;
-    }>;
-  }>('getTokenLargestAccounts', [mint]);
+  const apiKey = getApiKey();
+  
+  try {
+    // Use Helius DAS API - getAssetsByGroup for token holders
+    const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'getTokenAccounts',
+        params: {
+          mint,
+          limit,
+          options: {
+            showZeroBalance: false,
+          }
+        },
+      }),
+    });
 
-  return result.value.slice(0, limit).map((account) => ({
-    address: account.address,
-    amount: parseInt(account.amount, 10),
-    decimals: account.decimals,
-    uiAmount: account.uiAmount,
-  }));
+    const data = await response.json();
+    
+    if (data.error) {
+      // Fallback to standard RPC for smaller tokens
+      console.log(`Using fallback for ${mint.slice(0, 8)}...`);
+      return getLargestTokenHoldersFallback(mint, limit);
+    }
+
+    const accounts = data.result?.token_accounts || [];
+    
+    return accounts
+      .sort((a: any, b: any) => parseFloat(b.amount) - parseFloat(a.amount))
+      .slice(0, limit)
+      .map((account: any) => ({
+        address: account.owner,
+        amount: parseInt(account.amount, 10),
+        decimals: account.decimals || 9,
+        uiAmount: parseFloat(account.amount) / Math.pow(10, account.decimals || 9),
+      }));
+  } catch (error) {
+    console.error(`Error fetching holders for ${mint.slice(0, 8)}:`, error);
+    return getLargestTokenHoldersFallback(mint, limit);
+  }
+}
+
+/**
+ * Fallback method using standard RPC (works for smaller tokens)
+ */
+async function getLargestTokenHoldersFallback(
+  mint: string,
+  limit: number
+): Promise<TokenHolder[]> {
+  try {
+    const result = await heliusRpc<{
+      context: { slot: number };
+      value: Array<{
+        address: string;
+        amount: string;
+        decimals: number;
+        uiAmount: number;
+        uiAmountString: string;
+      }>;
+    }>('getTokenLargestAccounts', [mint]);
+
+    return result.value.slice(0, limit).map((account) => ({
+      address: account.address,
+      amount: parseInt(account.amount, 10),
+      decimals: account.decimals,
+      uiAmount: account.uiAmount,
+    }));
+  } catch (error) {
+    console.error('Fallback also failed:', error);
+    return [];
+  }
 }
 
 /**
